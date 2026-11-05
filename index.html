@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>C6 Conexão PJ · Faturamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --bg:#EEF1F4; --panel:#FFFFFF; --panel-2:#F6F8FA; --ink:#16202B; --muted:#5A6675; --line:#D5DBE2;
+  --teal:#0E6A6F; --teal-soft:#D8ECEC; --amber:#B97C0C; --amber-soft:#F5E6C4; --red:#B23A48; --red-soft:#F6DDE0;
+  --slate:#8595A6;
+  --f-body:"Barlow", "Segoe UI", Roboto, Arial, sans-serif;
+  --f-num:"Barlow Semi Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161C; --panel:#18212A; --panel-2:#1D2731; --ink:#E6ECF1; --muted:#93A1AF; --line:#2A3642;
+    --teal:#3BB3AE; --teal-soft:#173A3C; --amber:#E7B54A; --amber-soft:#3A2F17; --red:#E06B78; --red-soft:#3B1D22; --slate:#6F7F90;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161C; --panel:#18212A; --panel-2:#1D2731; --ink:#E6ECF1; --muted:#93A1AF; --line:#2A3642;
+  --teal:#3BB3AE; --teal-soft:#173A3C; --amber:#E7B54A; --amber-soft:#3A2F17; --red:#E06B78; --red-soft:#3B1D22; --slate:#6F7F90;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.wrap{max-width:1440px;margin:0 auto;padding:20px clamp(12px,3vw,32px) 48px}
+
+/* topo */
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}
+.brand h1{margin:0;font:700 clamp(24px,3.2vw,34px)/1.05 var(--f-num);letter-spacing:-.01em}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.meta{color:var(--muted);font-size:13px;text-align:right;line-height:1.35}
+.meta b{color:var(--ink);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--slate)}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent}
+.btn[disabled]{opacity:.55;cursor:progress}
+.toast{font-size:13px;color:var(--muted);min-height:18px}
+.toast.err{color:var(--red)}
+.toast.ok{color:var(--teal)}
+
+/* filtros */
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:18px;position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
+.fdate{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.fdate input{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:5px 8px;font-size:13px;color:var(--ink)}
+.quick{display:flex;gap:4px}
+.quick button{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:5px 8px;font-size:12.5px;cursor:pointer}
+.quick button.on{background:var(--teal-soft);border-color:var(--teal);color:var(--ink)}
+@media (max-width:700px){.filters{position:static}.sep{display:none}}
+.sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+.ms{position:relative}
+.ms > button{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms > button.active{border-color:var(--teal);background:var(--teal-soft)}
+.ms > button .lab{color:var(--muted)}
+.pop{position:absolute;top:calc(100% + 6px);left:0;width:300px;max-width:88vw;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px rgba(10,20,30,.18);padding:10px;z-index:40;display:none}
+.ms.open .pop{display:block}
+.pop input[type=search]{width:100%;border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:6px 8px;font-size:13px;margin-bottom:8px}
+.pop .row{display:flex;gap:6px;margin-bottom:6px}
+.pop .row button{flex:1;border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:4px;font-size:12px;cursor:pointer}
+.pop ul{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
+.pop li label{display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;font-size:13px;cursor:pointer}
+.pop li label:hover{background:var(--panel-2)}
+.clear{margin-left:auto;font-size:13px;border:0;background:none;color:var(--teal);cursor:pointer;padding:4px 6px}
+
+/* funil */
+.funnel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.05fr);background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:18px}
+.stage{padding:18px 20px 16px;position:relative;border-right:1px solid var(--line)}
+.stage:last-child{border-right:0;background:var(--panel-2)}
+.stage .name{font-size:13.5px;color:var(--muted);font-weight:500}
+.stage .val{font:700 clamp(28px,3.4vw,42px)/1.05 var(--f-num);margin-top:4px;font-variant-numeric:tabular-nums}
+.stage .sub{font-size:13px;color:var(--muted);margin-top:4px}
+.stage .sub b{color:var(--ink);font-weight:600}
+.stage .step{position:absolute;right:-13px;top:50%;transform:translateY(-50%);z-index:2;width:26px;height:26px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;color:var(--muted)}
+.stage.sale .val{color:var(--amber)}
+.stage.sale{background:linear-gradient(0deg,var(--amber-soft),transparent 70%)}
+.tma{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tma .val{font-size:clamp(24px,2.6vw,32px)}
+@media (max-width:900px){
+  .funnel{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stage{border-bottom:1px solid var(--line)}
+  .stage .step{display:none}
+  .stage:last-child{grid-column:1/-1}
+}
+
+/* abas */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 14px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--teal)}
+.grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px}
+@media (max-width:1000px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.card h2{font:600 18px/1.2 var(--f-num);margin:0 0 4px}
+.card .hint{font-size:13px;color:var(--muted);margin:0 0 12px}
+.chartbox{position:relative;height:300px}
+.bar-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.bar-head input[type=search]{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:6px 10px;font-size:13px;min-width:220px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:var(--panel-2);padding:5px 10px;font-size:12.5px;cursor:pointer}
+.seg button.on{background:var(--teal);color:#fff}
+
+/* tabelas */
+.tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+thead th{position:sticky;top:0;background:var(--panel-2);font-weight:600;font-size:12.5px;color:var(--muted);text-align:left;cursor:pointer;user-select:none}
+thead th.num,td.num{text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums;font-size:14px}
+thead th.num{font-family:var(--f-body);font-size:12.5px}
+thead th .arr{opacity:.35;margin-left:3px}
+thead th.sorted{color:var(--ink)}
+thead th.sorted .arr{opacity:1}
+tbody tr:hover{background:var(--panel-2)}
+tfoot td{font-weight:600;background:var(--panel-2);border-bottom:0}
+td.name{max-width:320px;overflow:hidden;text-overflow:ellipsis}
+tr.child td{background:var(--panel-2);font-size:13px}
+tr.child td.name{padding-left:30px;color:var(--muted)}
+.exp{border:0;background:none;cursor:pointer;width:18px;padding:0;color:var(--muted);font-size:11px}
+.zero{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:middle}
+.tag{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted)}
+.tag.t-SUCESSO{background:var(--amber-soft);border-color:transparent;color:var(--ink)}
+.tag.t-EMNEG{background:var(--teal-soft);border-color:transparent;color:var(--ink)}
+.tag.t-TEL{background:transparent}
+.tag.t-REC{background:var(--red-soft);border-color:transparent;color:var(--ink)}
+.qt{display:inline-block;min-width:30px;text-align:center;font:600 12.5px/1.5 var(--f-num);padding:0 7px;border-radius:10px}
+.qt.q1{background:var(--teal);color:#fff}.qt.q2{background:var(--teal-soft);color:var(--ink)}
+.qt.q3{background:var(--amber-soft);color:var(--ink)}.qt.q4{background:var(--red-soft);color:var(--ink)}
+.tabbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.tabsum{font-size:13.5px;color:var(--muted);margin:0 0 12px}.tabsum b{color:var(--ink)}
+.pbar{display:inline-block;height:6px;border-radius:3px;background:var(--teal);vertical-align:middle;margin-left:8px;opacity:.75}
+td.heat{text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+
+/* vazio */
+.empty{background:var(--panel);border:1px dashed var(--slate);border-radius:12px;padding:40px 28px;max-width:680px;margin:40px auto;text-align:left}
+.empty h2{font:600 22px/1.2 var(--f-num);margin:0 0 10px}
+.empty ol{margin:0 0 18px;padding-left:20px;color:var(--muted)}
+.empty ol li{margin:4px 0}
+.empty code{background:var(--panel-2);padding:1px 6px;border-radius:5px;font-size:13px}
+.hidden{display:none!important}
+th.dlt{font-size:11.5px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--teal)}
+th.sorted{color:var(--teal)}
+.ms .ms-busca{width:100%;margin:0 0 6px;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;background:var(--panel-2);color:var(--ink)}
+table.rk td.name{max-width:520px;white-space:normal}
+table.rk td.good,table.rk td.bad{font-weight:600}
+.acs-form{display:grid;grid-template-columns:1.2fr 1.4fr .9fr 1.2fr auto;gap:10px;align-items:end}
+@media (max-width:1000px){.acs-form{grid-template-columns:1fr 1fr}}
+.acs-form label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:500}
+.acs-form input,.acs-form select{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:7px 9px;font-size:14px;color:var(--ink)}
+.acs-senha{display:flex;gap:6px}.acs-senha input{flex:1;min-width:0}
+.acs-ok{background:var(--teal-soft);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13.5px;white-space:pre-line}
+.acs-ok b{font-family:var(--f-num)}
+.acs-tbl td,.acs-tbl th{font-size:13px}
+.acs-tbl .acts{display:flex;gap:6px;justify-content:flex-end}
+.acs-tbl .acts button{border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer}
+.acs-tbl .acts button.del{color:var(--red)}
+.pill{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line)}
+.pill.adm{background:var(--amber-soft);border-color:transparent}
+.pill.ok{background:var(--teal-soft);border-color:transparent}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:22px;width:min(380px,92vw)}
+dialog::backdrop{background:rgba(10,20,30,.45)}
+dialog h2{font:600 20px/1.2 var(--f-num);margin:0 0 6px}
+dialog label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
+dialog input{display:block;width:100%;margin-top:4px;border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:8px 10px;color:var(--ink)}
+.dlg-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.drop{outline:2px dashed var(--teal);outline-offset:-8px}
+@media (prefers-reduced-motion:no-preference){.stage .val{transition:color .2s}}
+/* ---- extrato (layout da planilha) ---- */
+.ctrl{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:16px}
+.ctrl label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:500}
+.ctrl select{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:6px 10px;font-size:14px;color:var(--ink);min-width:170px}
+.kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:18px}
+.kpi{padding:14px 16px;border-right:1px solid var(--line)}
+.kpi:last-child{border-right:0}
+.kpi .n{font-size:12.5px;color:var(--muted);font-weight:500}
+.kpi .v{font:700 clamp(20px,2.2vw,28px)/1.1 var(--f-num);margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
+.kpi.proj{background:var(--panel-2)}
+.kpi.proj .v{color:var(--teal)}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.kpi{border-bottom:1px solid var(--line)}}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.blk{margin-bottom:20px}
+.blk h2{font:700 17px/1.2 var(--f-num);margin:0 0 8px;letter-spacing:.01em}
+table.x{font-size:12.5px}
+table.x th,table.x td{padding:5px 7px}
+table.x td.name{max-width:210px;width:210px}
+table.x td.num{font-size:13px}
+.wrap{max-width:1760px}
+table.x thead tr.grp th{background:transparent;border-bottom:0;padding-bottom:2px;font-size:12px;color:var(--ink);cursor:default}
+table.x thead tr.grp th.g-real{border-bottom:2px solid var(--slate)}
+table.x thead tr.grp th.g-proj{border-bottom:2px solid var(--teal);color:var(--teal)}
+table.x thead th{cursor:default;white-space:normal;vertical-align:bottom;line-height:1.2}
+table.x td.sepl,table.x th.sepl{border-left:2px solid var(--line)}
+table.x td.pj{background:color-mix(in srgb,var(--teal) 5%,transparent)}
+table.x tfoot td.pj{background:var(--panel-2)}
+td.good{color:var(--teal);font-weight:600}
+td.bad{color:var(--red);font-weight:600}
+td.dim{color:var(--muted)}
+.legend2{font-size:12.5px;color:var(--muted);margin:-8px 0 16px}
+.legend2 b{color:var(--ink)}
+
+/* ---- v11: logo e tabelas compactas ---- */
+.brand h1{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.logo img{height:34px;width:auto;display:block}
+.wrap{max-width:none}
+table.x{font-size:11.5px}
+table.x th,table.x td{padding:4px 5px}
+table.x td.num{font-size:12px}
+table.x thead th{font-size:11px}
+table.x td.name{max-width:190px;width:190px}
+.ctrl select{min-width:140px}
+/* ---- v10: filtros, abas, blocos altos, mapa ---- */
+.ctrl .ms > button{min-width:170px;text-align:left}
+.ctrl .clear{align-self:center}
+.jump{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.jump a{font-size:12.5px;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:3px 10px}
+.jump a:hover{border-color:var(--teal)}
+.blk{scroll-margin-top:12px}
+.tscroll.tall{max-height:560px;overflow:auto}
+.tscroll.tall thead th{position:sticky;top:0;z-index:1}
+select.sel{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:5px 8px;font-size:13px;color:var(--ink)}
+.hm{border-collapse:separate;border-spacing:2px;width:100%;font-size:11.5px}
+.hm th{font-weight:600;color:var(--muted);padding:4px 6px;text-align:center;white-space:nowrap}
+.hm th.rl{text-align:left}
+.hm td{padding:6px 2px;text-align:center;border-radius:4px;min-width:44px;font-variant-numeric:tabular-nums}
+.hm td.rl{text-align:left;background:none;font-weight:600;color:var(--ink,inherit);padding-right:10px;white-space:nowrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:none;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--teal);color:#fff}
+.hbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;background:color-mix(in srgb,var(--teal) 14%,transparent);color:var(--teal);font-weight:600}
+.warnbox{border:1px dashed var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--muted);margin-bottom:12px}
+.mapwrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px}
+@media (max-width:1100px){.mapwrap{grid-template-columns:minmax(0,1fr)}}
+.mapcard{position:relative}
+.map{position:relative;max-width:640px;margin:0 auto}
+.map svg{width:100%;height:auto;display:block}
+.map path{stroke:var(--panel);stroke-width:.8;cursor:pointer;transition:opacity .15s}
+.map path:hover{opacity:.78;stroke:var(--ink);stroke-width:1.2}
+.map text.uf{font:600 10px var(--f-body);fill:var(--ink);text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:var(--panel);stroke-width:2.5px}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 8px 24px rgba(10,20,30,.18);white-space:nowrap;z-index:5}
+.leg{display:flex;align-items:center;gap:8px;justify-content:center;font-size:12px;color:var(--muted);margin-top:8px}
+.leg i{display:inline-block;width:180px;height:10px;border-radius:5px}
+.spgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.spcard{background:var(--panel-2);border-radius:10px;padding:12px 14px}
+.spcard .n{font-size:12.5px;color:var(--muted);font-weight:600}
+.spcard .v{font:700 26px/1.1 var(--f-num);margin-top:4px}
+.spcard .v span{font:500 13px var(--f-body);color:var(--muted)}
+.spcard .s{font-size:12px;color:var(--muted);margin-top:4px}
+
+.qcards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}
+@media (max-width:1100px){.qcards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.qc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;border-top:4px solid var(--qc)}
+.qc .n{font:700 15px/1 var(--f-num);color:var(--qc)}
+.qc .v{font:700 24px/1.1 var(--f-num);margin-top:6px;font-variant-numeric:tabular-nums}
+.qc .s{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}
+.qp{display:inline-block;min-width:26px;text-align:center;padding:1px 7px;border-radius:9px;font-weight:700;font-size:11.5px;color:#fff;background:var(--qc)}
+.ctrl input[type=number],.ctrl input[type=search]{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:6px 10px;font-size:14px;color:var(--ink);width:120px}
+.ctrl input[type=search]{width:220px}
+table.x th.sort{cursor:pointer;user-select:none}
+table.x th.sort:hover{color:var(--teal)}
+.chart{width:100%;height:auto;display:block}
+.chart text{font:11px var(--f-body, sans-serif);fill:var(--muted)}
+.leg2{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+.leg2 i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-2px}
+.mtx td.c{text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <h1><span class="logo hidden" id="logo"></span>Faturamento — C6 Conexão PJ</h1>
+      <p>Comissão estimada pela cartilha Bases Internas PJ · arquivo diário VCLI do C6</p>
+    </div>
+    <div class="actions">
+      <div class="meta" id="meta">Nenhuma base carregada</div>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt" hidden>
+      <button class="btn primary hidden" id="btnUp">Atualizar base</button>
+      <button class="btn ghost hidden" id="btnLocal">Abrir arquivo</button>
+      <button class="btn ghost" id="btnLogin">Entrar</button>
+      <button class="btn ghost hidden" id="btnLogout">Sair</button>
+      <button class="btn ghost" id="btnTheme" aria-label="Alternar tema claro e escuro">Tema</button>
+    </div>
+  </header>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <section id="emptyState" class="empty">
+    <h2 id="emptyTitle">Carregando a base…</h2>
+    <div id="emptyBody"></div>
+  </section>
+  <main id="main" class="hidden">
+    <div class="ctrl">
+      <label>Safra (mês de abertura)<select id="selSafra"></select></label>
+      <label>Origem da base<select id="selOrig"></select></label>
+      <label>Mês de apuração<select id="selApur"></select></label>
+      <label>Regra do acelerador<select id="selRegra"><option value="tabela">Somente tabela da faixa</option><option value="dupla">Tabela da faixa + acelerador</option></select></label>
+      <button class="btn ghost" id="btnXlsx">Baixar Excel</button>
+    </div>
+    <section class="kpis" id="kpis"></section>
+    <nav class="tabs" id="tabs" role="tablist">
+      <button data-t="geral" class="on">Visão geral</button>
+      <button data-t="gatilhos">Gatilhos</button>
+      <button data-t="oport">Oportunidades</button>
+      <button data-t="receb">Recebimento</button>
+      <button data-t="analitico">Analítico</button>
+      <button data-t="acessos" id="tabAcessos" class="hidden">Acessos</button>
+    </nav>
+    <div id="view"></div>
+  </main>
+<dialog id="dlgLogin">
+  <form method="dialog" id="fLogin">
+    <h2>Entrar no painel</h2>
+    <p class="hint">Use o e-mail e a senha que você recebeu. Esqueceu a senha? Fale com o responsável pelo painel.</p>
+    <label>E-mail<input type="email" id="lEmail" required autocomplete="username"></label>
+    <label>Senha<input type="password" id="lPass" required autocomplete="current-password"></label>
+    <p class="toast err" id="lErr"></p>
+    <div class="dlg-actions"><button type="button" class="btn ghost" id="lCancel">Cancelar</button><button type="submit" class="btn primary" id="lGo">Entrar</button></div>
+  </form>
+</dialog>
+</div>
+<script>window.__LOGO__ = "";</script>
+<script>
+(() => {
+/* ================= CONFIG ================= */
+const SB_URL = "https://jycygfrkvdvdwshhbppp.supabase.co";
+const SB_KEY = "sb_publishable_0OCnz8b3eZye-ft-wBCDug_wzHQP3aT";
+const PAINEL = "faturamento_cxpj";
+const BUCKET = "paineis";
+const CONFIG_OK = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(SB_URL) && SB_KEY.length > 20;
+const sb = CONFIG_OK && window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+let logged = false, isAdmin = false;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const nf = new Intl.NumberFormat("pt-BR");
+const fInt = v => isFinite(v) ? nf.format(Math.round(v)) : "–";
+const fPct = (v, d) => isFinite(v) ? (v * 100).toLocaleString("pt-BR", { minimumFractionDigits:d == null ? 1 : d, maximumFractionDigits:d == null ? 1 : d }) + "%" : "–";
+const fDec = (v, d) => isFinite(v) ? v.toLocaleString("pt-BR", { minimumFractionDigits:d == null ? 1 : d, maximumFractionDigits:d == null ? 1 : d }) : "–";
+const fH = s => { if (!isFinite(s)) return "–"; const m = Math.round(s / 60); return nf.format(Math.floor(m / 60)) + ":" + String(m % 60).padStart(2, "0"); };
+const div = (a, b) => b ? a / b : NaN;
+const fMes = m => { m = String(m); return /^\d{6}$/.test(m) ? ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+m.slice(4) - 1] + "/" + m.slice(2,4) : m; };
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function toast(msg, kind){ const t = $("#toast"); t.textContent = msg || ""; t.className = "toast" + (kind ? " " + kind : ""); }
+const toMeta = r => r ? { fileName:r.arquivo, rows:r.linhas, updatedAt:r.atualizado_em, path:r.storage_path } : null;
+
+/* ================= REGRAS DA CARTILHA (Bases Internas PJ · out/26) ================= */
+const GAT = [
+  { k:"ab",  nome:"Abertura de conta PJ",       base:120 },
+  { k:"pix", nome:"Cash In + chave PIX forte",  base:300 },
+  { k:"bol", nome:"Emissão de boleto",          base:400 },
+  { k:"car", nome:"Uso de cartão",              base:500 },
+  { k:"tpv", nome:"TPV C6 Pay",                 base:700 }
+];
+const FAIXAS = [{ p:0.35, a:1.50 }, { p:0.25, a:1.25 }, { p:0.20, a:1.10 }];
+const acelDe = p => { for (const f of FAIXAS) if (p >= f.p) return f.a; return 1.0; };
+/* regra da operacao: valor da faixa (Tabela 1 = base x acelerador) e, sobre ele, o acelerador da Tabela 2.
+   ex.: faixa >= 25% -> conta R$ 150 (tabela) x 1,25 = R$ 187,50.  "tabela" = so o valor da Tabela 1 */
+const mult = a => S.regra === "dupla" ? a * a : a;
+const fR = v => isFinite(v) ? "R$ " + nf.format(Math.round(v)) : "–";
+const fD = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "–";
+const fSafra = m => fMes(String(m).replace("-", ""));
+
+const COLS_TXT = ["DATA_BASE","CD_CPF_CNPJ","NOME_CLIENTE","NOME_DO_MASTER","TELEFONE","TELEFONE_APP","BASE_ORIGEM","STATUS_ABERTURA_CC","STATUS_CONTA","STATUS_LEAD","DT_CONTA_CRIADA","DT_DISPONIBILIZACAO_BASE","DT_CADASTRO_CHAVEPIX","TIPO_CHAVEPIX"];
+const COLS_NUM = ["FL_PRIMEIRO_ACESSO","FL_ATIVA","CADASTRO_CHAVEPIXFORTE","FL_CASH_IN_MAIOR_0","FL_CASH_IN_MAIOR_1000","VL_CASH_IN","FL_EMISSAO_BOLETO_MAIOR_0","FL_EMISSAO_BOLETO_MAIOR_1000","VL_EMISSAO_BOLETO","ELEGIBILIDADE_C6PAY","FL_SOLICITACAO_C6PAY","FL_ENTREGA_C6PAY","TPV_C6PAY_M0","TPV_C6PAY_M1","CARTAO_ATIVO","SPENDING_CREDITO_M0","SPENDING_CREDITO_M1","FL_CARTAO_MAIOR_1000"];
+const DATE_COLS = new Set(["DATA_BASE","DT_CONTA_CRIADA","DT_DISPONIBILIZACAO_BASE","DT_CADASTRO_CHAVEPIX"]);
+const S = { rows:null, meta:null, loadedAsset:null, safras:[], safra:"", orig:"", tab:"geral", regra:"tabela", apur:"", oport:"ativ", busca:"", sortK:"valor", sortD:-1, dataBase:"" };
+
+/* ================= LEITURA ================= */
+const normKey = k => String(k).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u00a0/g, " ").trim().toUpperCase().replace(/\s+/g, "_");
+const num = v => { if (v == null || v === "") return 0; if (typeof v === "number") return v; const n = Number(String(v).replace(/\./g, "").replace(",", ".")); return isFinite(n) ? n : 0; };
+const clean = v => v == null ? "" : String(v).replace(/\u00a0/g, " ").trim();
+function isoDate(v){
+  if (v == null || v === "") return "";
+  if (v instanceof Date && !isNaN(v)) return new Date(v.getTime() - v.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  if (typeof v === "number" && v > 20000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
+  const t = String(v).trim(); let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})/); if (m) return m[3] + "-" + m[2] + "-" + m[1]; return "";
+}
+async function readFile(file){
+  const name = file.name.toLowerCase(); let wb;
+  if (name.endsWith(".csv") || name.endsWith(".txt")){
+    const text = await file.text(); const first = text.split(/\r?\n/, 1)[0];
+    const cnt = ch => first.split(ch).length - 1;
+    const FS = [["\t",cnt("\t")],[";",cnt(";")],[",",cnt(",")]].sort((a,b) => b[1]-a[1])[0][0];
+    wb = XLSX.read(text, { type:"string", FS, raw:true });
+  } else wb = XLSX.read(await file.arrayBuffer(), { type:"array", cellDates:true });
+  for (const sn of wb.SheetNames){
+    const r = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval:null, raw:true });
+    if (!r.length) continue;
+    const keys = Object.keys(r[0]).map(normKey);
+    if (keys.includes("CD_CPF_CNPJ") && keys.includes("DT_CONTA_CRIADA") && keys.includes("FL_ATIVA")) return r;
+  }
+  throw new Error("Não encontrei as colunas CD_CPF_CNPJ, DT_CONTA_CRIADA e FL_ATIVA. Use o arquivo diário VCLI do C6.");
+}
+function encode(rows){
+  const km = {}; Object.keys(rows[0]).forEach(k => km[normKey(k)] = k);
+  const data = [];
+  for (const r of rows){
+    if (!clean(r[km.CD_CPF_CNPJ])) continue;
+    data.push(COLS_TXT.map(c => km[c] == null ? "" : DATE_COLS.has(c) ? isoDate(r[km[c]]) : clean(r[km[c]]))
+      .concat(COLS_NUM.map(c => km[c] == null ? 0 : num(r[km[c]]))));
+  }
+  return { v:"f1", txt:COLS_TXT, num:COLS_NUM, data };
+}
+const encLen = enc => enc && enc.data ? enc.data.length : 0;
+function load(enc, meta){
+  const T = enc.txt, N = enc.num;
+  S.rows = enc.data.map(a => { const o = {}; T.forEach((c, i) => o[c] = a[i]); N.forEach((c, i) => o[c] = a[T.length + i]); return prep(o); });
+  S.meta = meta || S.meta;
+  S.dataBase = S.rows.reduce((m, r) => r.DATA_BASE > m ? r.DATA_BASE : m, "");
+  S.safras = Array.from(new Set(S.rows.map(r => r.safra).filter(Boolean))).sort();
+  S.safra = ""; S.orig = "";
+  { const y = +S.dataBase.slice(0, 4), m = +S.dataBase.slice(5, 7), ant = m === 1 ? (y - 1) + "-12" : y + "-" + String(m - 1).padStart(2, "0");
+    S.apur = S.safras.includes(ant) ? ant : (S.safras[S.safras.length - 1] || ""); }
+  $("#emptyState").classList.add("hidden"); $("#main").classList.remove("hidden");
+  buildControls(); renderMeta(); refresh();
+}
+/* gatilhos por cliente */
+function prep(r){
+  r.safra = r.DT_CONTA_CRIADA ? r.DT_CONTA_CRIADA.slice(0, 7) : "";
+  /* so conta APROVADA (STATUS_ABERTURA_CC) e LIBERADA (STATUS_CONTA) entra no balde e comissiona;
+     bloqueadas e desativadas ficam de fora mesmo aprovadas */
+  r.balde = String(r.STATUS_ABERTURA_CC).toUpperCase() === "APROVADO" && String(r.STATUS_CONTA).toUpperCase() === "LIBERADA";
+  r.aberta = r.balde && !!r.safra;
+  r.elig = r.aberta;
+  r.tpv = (r.TPV_C6PAY_M0 || 0) + (r.TPV_C6PAY_M1 || 0);
+  r.spend = (r.SPENDING_CREDITO_M0 || 0) + (r.SPENDING_CREDITO_M1 || 0);      /* cartao: soma dos dois meses */
+  r.g = {
+    ab:  r.elig,
+    pix: r.elig && r.CADASTRO_CHAVEPIXFORTE === 1 && r.FL_CASH_IN_MAIOR_1000 === 1,
+    bol: r.elig && r.FL_EMISSAO_BOLETO_MAIOR_1000 === 1,
+    car: r.elig && r.spend >= 1000,
+    tpv: r.elig && r.tpv >= 1000
+  };
+  return r;
+}
+function renderMeta(){
+  if (!S.rows){ $("#meta").textContent = "Nenhuma base carregada"; return; }
+  const m = S.meta, when = m && m.updatedAt ? new Date(m.updatedAt).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : null;
+  $("#meta").innerHTML = (when ? "Atualizado em <b>" + esc(when) + "</b><br>" : "<b>Somente nesta tela</b><br>") + "Arquivo do C6 de " + esc(fD(S.dataBase)) + " · " + fInt(S.rows.length) + " leads";
+}
+
+/* ================= CONTROLES ================= */
+function opts(list, sel, all, fmt){ return (all ? '<option value="">' + all + '</option>' : '') + list.map(v => '<option value="' + esc(v) + '"' + (v === sel ? ' selected' : '') + '>' + esc(fmt ? fmt(v) : v) + '</option>').join(""); }
+function buildControls(){
+  $("#selSafra").innerHTML = opts(S.safras, S.safra, "Todas as safras", fSafra);
+  $("#selApur").innerHTML = opts(S.safras, S.apur, null, fSafra);
+  $("#selOrig").innerHTML = opts(Array.from(new Set(S.rows.map(r => r.BASE_ORIGEM).filter(Boolean))).sort(), S.orig, "Todas");
+}
+$("#selSafra").onchange = e => { S.safra = e.target.value; refresh(); };
+$("#selOrig").onchange = e => { S.orig = e.target.value; refresh(); };
+$("#selRegra").onchange = e => { S.regra = e.target.value; refresh(); };
+$("#selApur").onchange = e => { S.apur = e.target.value; refresh(); };
+$("#tabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.tab = b.dataset.t; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b)); refresh(); };
+
+/* ================= CALCULO POR SAFRA ================= */
+function fimJanela(safra){ const y = +safra.slice(0, 4), m = +safra.slice(5, 7); return new Date(y, m + 1, 0); }     /* ultimo dia do mes seguinte */
+const isoD = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+function dia20(safra, mais){ const y = +safra.slice(0, 4), m = +safra.slice(5, 7); return isoD(new Date(y, m - 1 + mais, 20)); }
+function safraInfo(sf){
+  /* balde = contas APROVADAS com STATUS_CONTA LIBERADA (todas as safras e origens);
+     % ativacao = contas ativas (FL_ATIVA) / balde -> define o acelerador de todas as safras */
+  const balde = S.rows.filter(naApur), ativas = balde.filter(r => r.FL_ATIVA === 1).length;
+  const pct = div(ativas, balde.length), acel = acelDe(pct || 0);
+  const prox = FAIXAS.slice().reverse().find(f => (pct || 0) < f.p);
+  const falta = prox ? Math.max(0, Math.ceil(prox.p * balde.length - 1e-9) - ativas) : 0;
+  const fim = fimJanela(sf), hoje = S.dataBase ? new Date(S.dataBase + "T12:00:00") : new Date();
+  const dias = Math.ceil((fim - hoje) / 864e5);
+  return { sf, n:balde.length, ativas, pct, acel, prox, falta, fim:isoD(fim), dias, aberta:dias >= 0 };
+}
+/* conta entra na apuracao se esta no balde e foi criada ate o mes de apuracao (contas de meses seguintes ficam fora) */
+const naApur = r => r.balde && (!r.safra || !S.apur || r.safra <= S.apur);
+function filtrados(){ return S.rows.filter(r => r.aberta && naApur(r) && (!S.safra || r.safra === S.safra) && (!S.orig || r.BASE_ORIGEM === S.orig)); }
+function calc(){
+  const info = {}; S.safras.forEach(sf => info[sf] = safraInfo(sf));
+  const rows = filtrados();
+  /* faturamento do mes de apuracao: abertura so das contas criadas no mes; Cash In, boleto,
+     cartao e TPV de todas as contas do balde que atingiram o gatilho */
+  rows.forEach(r => { r.gf = {}; GAT.forEach(g => r.gf[g.k] = !!r.g[g.k] && (g.k !== "ab" || r.safra === S.apur));
+    r.baseVal = GAT.reduce((s, g) => s + (r.gf[g.k] ? g.base : 0), 0);
+    const a = info[r.safra].acel; r.acel = a; r.valor = r.baseVal * mult(a); });
+  const porSafra = {};
+  rows.forEach(r => { const p = porSafra[r.safra] || (porSafra[r.safra] = { contas:0, elig:0, base:0, valor:0, q:{}, v:{} });
+    p.contas++; if (r.elig) p.elig++; p.base += r.baseVal; p.valor += r.valor;
+    GAT.forEach(g => { if (r.gf[g.k]){ p.q[g.k] = (p.q[g.k] || 0) + 1; p.v[g.k] = (p.v[g.k] || 0) + g.base * mult(r.acel); } }); });
+  return { info, rows, porSafra };
+}
+
+/* ================= RENDER ================= */
+function refresh(){
+  if (S.tab === "acessos"){ if (logged && isAdmin) renderAcessos(); return; }
+  if (!S.rows) return;
+  const C = calc(), safras = Object.keys(C.porSafra).sort();
+  const tot = safras.reduce((t, sf) => { const p = C.porSafra[sf]; t.valor += p.valor; t.contas += p.contas; t.elig += p.elig; GAT.forEach(g => t.q[g.k] = (t.q[g.k] || 0) + (p.q[g.k] || 0)); return t; }, { valor:0, contas:0, elig:0, q:{} });
+  const bal = S.rows.filter(naApur), ativas = bal.filter(r => r.FL_ATIVA === 1).length;
+  const k = (n, v, s) => '<div class="kpi"><div class="n">' + n + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
+  const ganho = safras.reduce((s, sf) => { const i = C.info[sf]; return s + (i.aberta && i.prox ? C.porSafra[sf].base * (mult(i.prox.a) - mult(i.acel)) : 0); }, 0);
+  $("#kpis").innerHTML = k("Faturamento estimado", fR(tot.valor), "Apuração " + fSafra(S.apur) + ": " + fInt(tot.q.ab || 0) + " aberturas + gatilhos do balde")
+    + k("Contas no balde", fInt(bal.length), "aprovadas e com a conta liberada" + (bal.length > tot.contas && !S.safra && !S.orig ? " · " + fInt(bal.length - tot.contas) + " sem data de criação (fora das safras)" : ""))
+    + k("% ativação do balde", fPct(div(ativas, bal.length)), fInt(ativas) + " ativas de " + fInt(bal.length) + " contas do balde")
+    + k("Cash In + PIX forte", fInt(tot.q.pix || 0), "gatilho de R$ 300 (base)")
+    + k("Boleto · Cartão · TPV", fInt(tot.q.bol || 0) + " · " + fInt(tot.q.car || 0) + " · " + fInt(tot.q.tpv || 0), "gatilhos de R$ 400 · 500 · 700")
+    + k("Potencial do acelerador", fR(ganho), "se as safras em janela subirem de faixa");
+  const v = $("#view");
+  if (S.tab === "geral") v.innerHTML = viewGeral(C, safras);
+  else if (S.tab === "gatilhos") v.innerHTML = viewGatilhos(C, safras);
+  else if (S.tab === "oport"){ v.innerHTML = viewOport(C); bindOport(); }
+  else if (S.tab === "receb") v.innerHTML = viewReceb(C, safras);
+  else { v.innerHTML = viewAnalitico(C); bindAnalitico(); }
+}
+const faixaTxt = a => a === 1.5 ? "≥ 35%" : a === 1.25 ? "≥ 25%" : a === 1.1 ? "≥ 20%" : "< 20%";
+function viewGeral(C, safras){
+  if (!safras.length) return '<div class="card"><h2>Sem contas abertas no filtro</h2></div>';
+  const cards = safras.map(sf => { const i = C.info[sf], p = C.porSafra[sf];
+    const barra = Math.min(1, (i.pct || 0) / 0.35);
+    const marcas = [0.20, 0.25, 0.35].map(t => '<i style="position:absolute;left:' + (t / 0.35 * 100) + '%;top:-3px;bottom:-3px;width:2px;background:var(--ink)"></i>').join("");
+    return '<div class="card" style="margin:0"><div class="bar-head"><h2 style="margin:0">Safra ' + esc(fSafra(sf)) + '</h2><span class="pill' + (i.aberta ? ' ok' : '') + '">' + (i.aberta ? 'Janela aberta · ' + i.dias + ' dia(s)' : 'Janela fechada') + '</span></div>'
+      + '<div style="font:700 30px/1.1 var(--f-num);margin:10px 0 2px">' + fR(p.valor) + '</div>'
+      + '<p class="hint" style="margin:0 0 4px">Faturamento estimado · janela até ' + fD(i.fim) + '</p>'
+      + '<p class="hint" style="margin:0 0 12px">Sem acelerador ' + fR(p.base) + ' · tabela da faixa ' + fR(p.base * i.acel) + (S.regra === "dupla" ? ' · com acelerador ' + fR(p.base * i.acel * i.acel) : '') + ' (abertura a R$ ' + (120 * mult(i.acel)).toLocaleString("pt-BR", { minimumFractionDigits:2, maximumFractionDigits:2 }) + ')</p>'
+      + '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px"><span>% ativação do balde: <b>' + fPct(i.pct) + '</b> (' + fInt(i.ativas) + ' de ' + fInt(i.n) + ')</span><span>Faixa ' + faixaTxt(i.acel) + ' · acelerador <b>' + fDec(i.acel, 2) + '</b></span></div>'
+      + '<div style="position:relative;height:10px;border-radius:5px;background:var(--panel-2);border:1px solid var(--line)"><div style="height:100%;width:' + (barra * 100) + '%;border-radius:5px;background:var(--teal)"></div>' + marcas + '</div>'
+      + '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>0%</span><span>20% · 25% · 35%</span></div>'
+      + (i.prox ? '<div class="warnbox" style="margin:12px 0 0;border-style:solid;border-color:var(--teal);color:var(--ink)">Faltam <b>' + fInt(i.falta) + ' contas ativas</b> para a faixa de ' + fPct(i.prox.p, 0) + ' (acelerador ' + fDec(i.prox.a, 2) + '). Isso soma <b>' + fR(p.base * (mult(i.prox.a) - mult(i.acel))) + '</b> ao faturamento da safra' + (i.aberta ? '.' : ', mas a janela já fechou.') + '</div>'
+               : '<div class="warnbox" style="margin:12px 0 0">Safra já está na faixa máxima (≥ 35%).</div>')
+      + '</div>'; }).join("");
+  const linhas = safras.map(sf => { const p = C.porSafra[sf];
+    return '<tr><td class="name">' + esc(fSafra(sf)) + '</td>' + GAT.map(g => '<td class="num">' + fR(p.v[g.k] || 0) + '</td>').join("") + '<td class="num"><b>' + fR(p.valor) + '</b></td></tr>'; }).join("");
+  const T = GAT.map(g => safras.reduce((s, sf) => s + (C.porSafra[sf].v[g.k] || 0), 0)), TT = T.reduce((a, b) => a + b, 0);
+  const comp = '<div class="card"><h2>Composição do faturamento</h2><div class="tscroll"><table class="x"><thead><tr><th>Safra</th>' + GAT.map(g => '<th class="num">' + g.nome + '</th>').join("") + '<th class="num">Total</th></tr></thead><tbody>' + linhas
+    + '<tr class="tot"><td class="name"><b>Total</b></td>' + T.map(v => '<td class="num"><b>' + fR(v) + '</b></td>').join("") + '<td class="num"><b>' + fR(TT) + '</b></td></tr>'
+    + '<tr><td class="name">% do total</td>' + T.map(v => '<td class="num">' + fPct(div(v, TT)) + '</td>').join("") + '<td class="num">100%</td></tr></tbody></table></div>'
+    + '<p class="legend2" style="margin:8px 0 0">Valores finais pela regra selecionada (' + (S.regra === "dupla" ? 'tabela da faixa + acelerador' : 'somente tabela da faixa') + '). Só contas liberadas comissionam; o balde são as contas aprovadas com STATUS_CONTA liberada, criadas até o mês de apuração (todas as origens); o % de ativação é calculado sobre ele.</p></div>';
+  return compBalde() + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-bottom:16px">' + cards + '</div>' + comp;
+}
+/* composicao do balde: de onde vem o % de ativacao (todas as safras e origens) */
+function compBalde(){
+  const bal = S.rows.filter(naApur), N = bal.length, A = bal.filter(r => r.FL_ATIVA === 1).length;
+  const grupo = (chave, ordem) => { const m = new Map();
+    bal.forEach(r => { const k = chave(r); const x = m.get(k) || { n:0, a:0 }; x.n++; if (r.FL_ATIVA === 1) x.a++; m.set(k, x); });
+    return Array.from(m.entries()).sort(ordem); };
+  const linha = (nome, x) => '<tr><td class="name">' + esc(nome) + '</td><td class="num">' + fInt(x.n) + '</td><td class="num">' + fPct(div(x.n, N)) + '</td><td class="num"><b>' + fInt(x.a) + '</b></td><td class="num">' + fPct(div(x.a, A)) + '</td><td class="num">' + fPct(div(x.a, x.n)) + '</td></tr>';
+  const head = t => '<table class="x"><thead><tr><th>' + t + '</th><th class="num">Contas no balde</th><th class="num">% do balde</th><th class="num">Ativas</th><th class="num">% das ativas</th><th class="num">% ativação</th></tr></thead><tbody>';
+  const tot = '<tr class="tot"><td class="name"><b>Total do balde</b></td><td class="num"><b>' + fInt(N) + '</b></td><td class="num">100%</td><td class="num"><b>' + fInt(A) + '</b></td><td class="num">100%</td><td class="num"><b>' + fPct(div(A, N)) + '</b></td></tr>';
+  const porSafra = grupo(r => r.safra || "", (x, y) => (x[0] || "9") < (y[0] || "9") ? -1 : 1)
+    .map(([k, x]) => linha(k ? "Safra " + fSafra(k) : "Sem data de criação", x)).join("");
+  const porOrig = grupo(r => r.BASE_ORIGEM || "Sem origem", (x, y) => y[1].n - x[1].n).map(([k, x]) => linha(k, x)).join("");
+  /* aprovadas que ficaram fora do balde (conta nao liberada) */
+  const fora = new Map(); S.rows.filter(r => String(r.STATUS_ABERTURA_CC).toUpperCase() === "APROVADO" && !r.balde)
+    .forEach(r => { const k = String(r.STATUS_CONTA || "SEM STATUS").toUpperCase(); fora.set(k, (fora.get(k) || 0) + 1); });
+  const foraTxt = fora.size ? Array.from(fora.entries()).map(([k, n]) => fInt(n) + " " + k.toLowerCase()).join(", ") : "nenhuma";
+  return '<div class="card"><h2>Composição do balde</h2>'
+    + '<p class="hint" style="margin:0 0 12px">Balde = contas aprovadas com STATUS_CONTA liberada, criadas até o mês de apuração (' + esc(fSafra(S.apur)) + '), de todas as origens. O % de ativação do balde define o acelerador de todas as safras.</p>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:16px">'
+    + '<div class="tscroll">' + head("Mês de abertura") + porSafra + tot + '</tbody></table></div>'
+    + '<div class="tscroll">' + head("Origem da base") + porOrig + tot + '</tbody></table></div></div>'
+    + '<p class="legend2" style="margin:10px 0 0">Fora do balde (aprovadas, mas sem conta liberada): ' + esc(foraTxt) + '.'
+    + (S.rows.some(r => r.balde && r.safra > S.apur) ? ' Contas criadas depois de ' + esc(fSafra(S.apur)) + ' não entram na apuração: ' + fInt(S.rows.filter(r => r.balde && r.safra > S.apur).length) + '.' : '') + '</p></div>';
+}
+function viewGatilhos(C, safras){
+  const t = safras.map(sf => { const p = C.porSafra[sf], i = C.info[sf];
+    return '<div class="card"><h2>Safra ' + esc(fSafra(sf)) + ' · acelerador ' + fDec(i.acel, 2) + '</h2><div class="tscroll"><table class="x"><thead><tr><th>Gatilho</th><th class="num">Valor-base</th><th class="num">Tabela da faixa</th><th class="num">Valor final</th><th class="num">Contas que atingiram</th><th class="num">% das contas liberadas</th><th class="num">Faturamento</th></tr></thead><tbody>'
+      + GAT.map(g => '<tr><td class="name">' + g.nome + '</td><td class="num">' + fR(g.base) + '</td><td class="num">' + fR(g.base * i.acel) + '</td><td class="num"><b>' + fR(g.base * mult(i.acel)) + '</b></td><td class="num"><b>' + fInt(p.q[g.k] || 0) + '</b></td><td class="num">' + fPct(div(p.q[g.k] || 0, p.elig)) + '</td><td class="num"><b>' + fR(p.v[g.k] || 0) + '</b></td></tr>').join("")
+      + '<tr class="tot"><td class="name"><b>Total</b></td><td></td><td></td><td></td><td></td><td></td><td class="num"><b>' + fR(p.valor) + '</b></td></tr></tbody></table></div></div>'; }).join("");
+  return (t || '<div class="card"><h2>Sem contas no filtro</h2></div>')
+    + '<div class="card"><h2>Regras dos gatilhos</h2><p class="hint" style="margin:0">Abertura: conta liberada. Cash In + PIX forte: chave PIX forte cadastrada e cash in ≥ R$ 1.000. Boleto: emissão ≥ R$ 1.000 (FL_EMISSAO_BOLETO_MAIOR_1000). Cartão: soma do spending de crédito M0 + M1 ≥ R$ 1.000. TPV C6 Pay: TPV M0 + M1 ≥ R$ 1.000. Cada gatilho conta uma vez por conta, dentro da janela (mês de abertura + mês seguinte). Valor final: ' + (S.regra === "dupla" ? 'valor da tabela da faixa (Tabela 1) multiplicado pelo acelerador da Tabela 2 (ex.: faixa ≥ 25%: R$ 150 × 1,25 = R$ 187,50 na abertura).' : 'somente o valor da tabela da faixa (Tabela 1).') + '</p></div>';
+}
+/* ---------- oportunidades: contas em janela aberta perto de um gatilho ---------- */
+const OP = [
+  { k:"ativ", nome:"Conta sem ativação (sobe o % do balde)", f:r => r.elig && r.FL_ATIVA !== 1, gat:null },
+  { k:"pixsc", nome:"Chave PIX forte sem cash in de R$ 1.000", f:r => r.elig && r.CADASTRO_CHAVEPIXFORTE === 1 && r.FL_CASH_IN_MAIOR_1000 !== 1, gat:"pix" },
+  { k:"cashsp", nome:"Cash in ≥ R$ 1.000 sem chave PIX forte", f:r => r.elig && r.FL_CASH_IN_MAIOR_1000 === 1 && r.CADASTRO_CHAVEPIXFORTE !== 1, gat:"pix" },
+  { k:"cashp", nome:"Cash in entre R$ 1 e R$ 999", f:r => r.elig && r.FL_CASH_IN_MAIOR_0 === 1 && r.FL_CASH_IN_MAIOR_1000 !== 1, gat:"pix" },
+  { k:"card", nome:"Cartão ativo sem spending de R$ 1.000", f:r => r.elig && r.CARTAO_ATIVO === 1 && r.spend < 1000, gat:"car" },
+  { k:"bolp", nome:"Boleto emitido abaixo de R$ 1.000", f:r => r.elig && r.FL_EMISSAO_BOLETO_MAIOR_0 === 1 && r.FL_EMISSAO_BOLETO_MAIOR_1000 !== 1, gat:"bol" },
+  { k:"pay", nome:"C6 Pay entregue sem TPV de R$ 1.000", f:r => r.elig && r.FL_ENTREGA_C6PAY === 1 && r.tpv < 1000, gat:"tpv" },
+  { k:"acesso", nome:"Conta liberada sem primeiro acesso", f:r => r.elig && r.FL_PRIMEIRO_ACESSO !== 1, gat:null }
+];
+function viewOport(C){
+  const abertas = C.rows.filter(r => C.info[r.safra] && C.info[r.safra].aberta);
+  const resumo = OP.map(o => { const l = abertas.filter(o.f), g = o.gat ? GAT.find(x => x.k === o.gat) : null;
+    const pot = g ? l.reduce((s, r) => s + g.base * mult(C.info[r.safra].acel), 0) : null;
+    return { o, l, pot }; });
+  S._oport = resumo;
+  const sel = resumo.find(x => x.o.k === S.oport) || resumo[0];
+  const tab = '<div class="tscroll"><table class="x"><thead><tr><th>Oportunidade</th><th class="num">Contas</th><th class="num">Potencial se converter</th><th></th></tr></thead><tbody>'
+    + resumo.map(x => '<tr' + (x === sel ? ' class="tot"' : '') + '><td class="name" style="white-space:normal;max-width:none">' + esc(x.o.nome) + '</td><td class="num"><b>' + fInt(x.l.length) + '</b></td><td class="num">' + (x.pot == null ? '<span class="hint">ajuda o acelerador</span>' : fR(x.pot)) + '</td><td><button class="btn ghost" data-op="' + x.o.k + '" style="padding:3px 10px;font-size:12px">Ver lista</button></td></tr>').join("")
+    + '</tbody></table></div>';
+  const lista = '<div class="tscroll tall"><table class="x"><thead><tr><th>Safra</th><th>CNPJ</th><th>Cliente</th><th>Sócio master</th><th>Telefone</th><th>Origem</th><th>Status do lead</th><th class="num">Cash in</th><th>Janela até</th></tr></thead><tbody>'
+    + sel.l.slice().sort((a, b) => (b.VL_CASH_IN || 0) - (a.VL_CASH_IN || 0)).map(r => '<tr><td>' + esc(fSafra(r.safra)) + '</td><td>' + esc(r.CD_CPF_CNPJ) + '</td><td class="name">' + esc(r.NOME_CLIENTE) + '</td><td class="name">' + esc(r.NOME_DO_MASTER) + '</td><td>' + esc(r.TELEFONE_APP || r.TELEFONE) + '</td><td>' + esc(r.BASE_ORIGEM) + '</td><td>' + esc(r.STATUS_LEAD) + '</td><td class="num">' + (r.VL_CASH_IN ? fR(r.VL_CASH_IN) : "–") + '</td><td>' + fD(C.info[r.safra].fim) + '</td></tr>').join("")
+    + '</tbody></table></div>';
+  return '<div class="card"><h2>Oportunidades nas safras com janela aberta</h2><p class="hint" style="margin-top:0">Contas liberadas que ainda podem gerar comissão antes de fechar a janela. Potencial = valor final do gatilho na faixa atual da safra.</p>' + tab + '</div>'
+    + '<div class="card"><div class="bar-head"><h2 style="margin:0">' + esc(sel.o.nome) + ' · ' + fInt(sel.l.length) + ' contas</h2><button class="btn ghost" id="btnOpXlsx">Baixar lista em Excel</button></div>' + lista + '</div>';
+}
+function bindOport(){
+  document.querySelectorAll("#view [data-op]").forEach(b => b.onclick = () => { S.oport = b.dataset.op; refresh(); });
+  const bx = $("#btnOpXlsx"); if (bx) bx.onclick = () => { const sel = (S._oport || []).find(x => x.o.k === S.oport) || S._oport[0];
+    const out = sel.l.map(r => ({ Safra:fSafra(r.safra), CNPJ:r.CD_CPF_CNPJ, Cliente:r.NOME_CLIENTE, "Sócio master":r.NOME_DO_MASTER, Telefone:r.TELEFONE, "Telefone app":r.TELEFONE_APP, Origem:r.BASE_ORIGEM, "Status do lead":r.STATUS_LEAD, "Cash in":r.VL_CASH_IN || 0, "Chave PIX forte":r.CADASTRO_CHAVEPIXFORTE ? "Sim" : "Não", "Conta ativa":r.FL_ATIVA ? "Sim" : "Não" }));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out), "Oportunidade"); XLSX.writeFile(wb, "Oportunidades_" + sel.o.k + "_" + S.dataBase + ".xlsx"); };
+}
+function viewReceb(C, safras){
+  const linhas = safras.map(sf => { const p = C.porSafra[sf], i = C.info[sf];
+    const vAb = p.v.ab || 0, vG = p.valor - vAb;
+    return '<tr><td class="name">' + esc(fSafra(sf)) + '</td><td class="num">' + fD(i.fim) + '</td><td class="num">' + fD(dia20(sf, 1)) + '</td><td class="num">' + fR(vAb) + '</td><td class="num">' + fD(dia20(sf, 1)) + ' ou ' + fD(dia20(sf, 2)) + '</td><td class="num">' + fR(vG) + '</td><td class="num"><b>' + fR(p.valor) + '</b></td><td>' + (p.valor >= 3000 ? '<span class="pill ok">Acima do mínimo</span>' : '<span class="pill">Acumula (mín. R$ 3.000)</span>') + '</td></tr>'; }).join("");
+  return '<div class="card"><h2>Previsão de recebimento</h2><p class="hint" style="margin-top:0">Pela cartilha, a apuração fecha até o dia 20 do mês seguinte ao evento e o pagamento sai depois da validação do C6. A abertura acontece no mês da safra; os demais gatilhos podem cair no mês da safra ou no seguinte, por isso aparecem com as duas datas possíveis.</p>'
+    + '<div class="tscroll"><table class="x"><thead><tr><th>Safra</th><th class="num">Fim da janela</th><th class="num">Apuração da abertura</th><th class="num">Valor da abertura</th><th class="num">Apuração dos gatilhos</th><th class="num">Valor dos gatilhos</th><th class="num">Total estimado</th><th>Mínimo para pagamento</th></tr></thead><tbody>' + linhas + '</tbody></table></div></div>';
+}
+const ACOLS = [["safra","Safra"],["NOME_CLIENTE","Cliente"],["CD_CPF_CNPJ","CNPJ"],["BASE_ORIGEM","Origem"],["STATUS_CONTA","Conta"],["FL_ATIVA","Ativa"],["ab","Abertura"],["pix","PIX+Cash"],["bol","Boleto"],["car","Cartão"],["tpv","TPV"],["VL_CASH_IN","Cash in"],["valor","Valor estimado"]];
+function viewAnalitico(C){
+  const b = S.busca.toLowerCase();
+  const l = C.rows.filter(r => !b || (r.NOME_CLIENTE + " " + r.CD_CPF_CNPJ + " " + r.NOME_DO_MASTER).toLowerCase().includes(b));
+  const K = S.sortK, D = S.sortD, val = (r, k) => GAT.some(g => g.k === k) ? (r.g[k] ? 1 : 0) : r[k];
+  l.sort((x, y) => { const a = val(x, K), c = val(y, K); return typeof a === "string" ? D * String(a).localeCompare(String(c)) : D * ((a || 0) - (c || 0)); });
+  const ck = v => v ? '<span style="color:#2E7D32;font-weight:700">✓</span>' : '<span style="color:var(--muted)">·</span>';
+  const cell = (r, k) => GAT.some(g => g.k === k) ? ck(r.g[k]) : k === "safra" ? esc(fSafra(r.safra)) : k === "FL_ATIVA" ? ck(r.FL_ATIVA === 1) : k === "VL_CASH_IN" ? (r.VL_CASH_IN ? fR(r.VL_CASH_IN) : "–") : k === "valor" ? '<b>' + fR(r.valor) + '</b>' : esc(r[k]);
+  return '<div class="card"><div class="bar-head"><div><h2 style="margin:0">Analítico por cliente · ' + fInt(l.length) + ' contas</h2><p class="hint" style="margin:0">Clique no título da coluna para ordenar.</p></div><input type="search" id="busca" class="sel" placeholder="Buscar cliente, CNPJ ou sócio" value="' + esc(S.busca) + '"></div>'
+    + '<div class="tscroll tall"><table class="x"><thead><tr>' + ACOLS.map(([k, h]) => '<th class="sort' + (["VL_CASH_IN","valor"].includes(k) ? ' num' : '') + '" data-k="' + k + '">' + h + (S.sortK === k ? (S.sortD > 0 ? " ▲" : " ▼") : "") + '</th>').join("") + '</tr></thead><tbody>'
+    + l.slice(0, 3000).map(r => '<tr>' + ACOLS.map(([k]) => '<td class="' + (["NOME_CLIENTE"].includes(k) ? "name" : ["VL_CASH_IN","valor"].includes(k) ? "num" : "") + '">' + cell(r, k) + '</td>').join("") + '</tr>').join("") + '</tbody></table></div></div>';
+}
+function bindAnalitico(){
+  document.querySelectorAll("#view th.sort").forEach(th => th.onclick = () => { const k = th.dataset.k; if (S.sortK === k) S.sortD *= -1; else { S.sortK = k; S.sortD = ["safra","NOME_CLIENTE","CD_CPF_CNPJ","BASE_ORIGEM","STATUS_CONTA"].includes(k) ? 1 : -1; } refresh(); });
+  const bx = $("#busca"); bx.oninput = e => { S.busca = e.target.value; const pos = e.target.selectionStart; refresh(); const n = $("#busca"); n.focus(); n.setSelectionRange(pos, pos); };
+}
+$("#btnXlsx").onclick = () => {
+  if (!S.rows) return;
+  const C = calc();
+  const out = C.rows.map(r => ({ Safra:fSafra(r.safra), CNPJ:r.CD_CPF_CNPJ, Cliente:r.NOME_CLIENTE, "Sócio master":r.NOME_DO_MASTER, Telefone:r.TELEFONE, Origem:r.BASE_ORIGEM, "Status conta":r.STATUS_CONTA, "Status lead":r.STATUS_LEAD,
+    "Conta ativa":r.FL_ATIVA ? "Sim" : "Não", Abertura:r.g.ab ? 1 : 0, "Cash In + PIX forte":r.g.pix ? 1 : 0, Boleto:r.g.bol ? 1 : 0, "Cartão":r.g.car ? 1 : 0, "TPV C6 Pay":r.g.tpv ? 1 : 0,
+    "Valor-base":r.baseVal, "Acelerador":r.acel, "Valor tabela da faixa":r.baseVal * r.acel, "Valor estimado":r.valor, "Regra":S.regra === "dupla" ? "Tabela + acelerador" : "Somente tabela" }));
+  const resumo = Object.keys(C.porSafra).sort().map(sf => { const p = C.porSafra[sf], i = C.info[sf];
+    const o = { Safra:fSafra(sf), "Contas abertas (balde)":i.n, "Contas ativas":i.ativas, "% ativação":i.pct, Acelerador:i.acel, "Fim da janela":fD(i.fim) };
+    GAT.forEach(g => { o[g.nome + " (qtd)"] = p.q[g.k] || 0; o[g.nome + " (R$)"] = p.v[g.k] || 0; }); o["Total (R$)"] = p.valor; return o; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumo), "Resumo por safra");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(out), "Analitico");
+  XLSX.writeFile(wb, "Faturamento_C6_CXPJ_" + S.dataBase + ".xlsx");
+};
+
+/* ================= ARQUIVO / SUPABASE ================= */
+async function handleFile(file, persist){
+  if (!file) return;
+  try {
+    toast("Lendo " + file.name + "…");
+    const enc = encode(await readFile(file)); if (!encLen(enc)) throw new Error("O arquivo não tem linhas.");
+    if (persist && logged && sb){
+      toast("Publicando a base…");
+      const body = JSON.stringify(enc), path = PAINEL + "/" + Date.now() + ".json";
+      const upr = await sb.storage.from(BUCKET).upload(path, new Blob([body], { type:"application/json" }), { contentType:"application/json", cacheControl:"31536000", upsert:false });
+      if (upr.error) throw upr.error;
+      const prev = S.meta && S.meta.path;
+      const mr = await sb.from("painel_base_meta").upsert({ painel:PAINEL, arquivo:file.name, linhas:encLen(enc), storage_path:path, tamanho_bytes:body.length, atualizado_em:new Date().toISOString() }).select().single();
+      if (mr.error){ await sb.storage.from(BUCKET).remove([path]); throw mr.error; }
+      S.loadedAsset = path; load(enc, toMeta(mr.data));
+      if (prev && prev !== path) sb.storage.from(BUCKET).remove([prev]).catch(() => {});
+      toast("Base atualizada para todos: " + fInt(encLen(enc)) + " linhas.", "ok");
+    } else { S.loadedAsset = null; load(enc, null); toast("Arquivo aberto só nesta tela.", "ok"); }
+  } catch (e){ const m = (e && (e.message || e.error)) || ""; toast(/row-level security|Unauthorized|403/i.test(m) ? "Seu usuário não tem permissão para atualizar a base." : m || "Não foi possível ler o arquivo.", "err"); }
+  finally { $("#file").value = ""; }
+}
+let persistNext = false;
+$("#btnUp").onclick = () => { persistNext = true; $("#file").click(); };
+$("#btnLocal").onclick = () => { persistNext = false; $("#file").click(); };
+$("#file").onchange = e => handleFile(e.target.files[0], persistNext);
+$("#btnTheme").onclick = () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  r.dataset.theme = dark ? "light" : "dark"; try { localStorage.setItem("c6pj-theme", r.dataset.theme); } catch(_){} refresh(); };
+try { const th = localStorage.getItem("c6pj-theme"); if (th) document.documentElement.dataset.theme = th; } catch(_){}
+function showEmpty(t, b){ $("#main").classList.add("hidden"); $("#emptyState").classList.remove("hidden"); $("#emptyTitle").textContent = t; $("#emptyBody").innerHTML = b || ""; }
+/* ---------- gestao de acessos (so administradores) ---------- */
+const gerarSenha = () => { const c = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"; let r = "";
+  const a = new Uint32Array(10); crypto.getRandomValues(a); a.forEach(x => r += c[x % c.length]); return r; };
+const fData = d => d ? new Date(d).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", year:"2-digit", hour:"2-digit", minute:"2-digit" }) : "–";
+async function chamarAcessos(body){
+  const { data, error } = await sb.functions.invoke("painel-acessos", { body });
+  if (error){
+    let msg = error.message || "Erro ao chamar a função painel-acessos.";
+    try { const j = await error.context.json(); if (j && j.erro) msg = j.erro; } catch(_){}
+    if (/not found|404|Failed to send/i.test(msg)) msg = "A função painel-acessos não foi encontrada no Supabase. Confira o passo de criação da Edge Function.";
+    throw new Error(msg);
+  }
+  if (data && data.erro) throw new Error(data.erro);
+  return data;
+}
+let ultimoCadastro = "";
+async function renderAcessos(){
+  const v = $("#view");
+  v.innerHTML = '<div class="card"><h2>Liberar acesso</h2><p class="hint">Cria o login da pessoa e libera o painel. Leitor só visualiza; administrador também atualiza a base e gerencia acessos.</p>'
+    + '<div class="acs-form">'
+    + '<label>Nome<input id="aNome" placeholder="Nome da pessoa"></label>'
+    + '<label>E-mail<input id="aEmail" type="email" placeholder="pessoa@empresa.com"></label>'
+    + '<label>Perfil<select id="aPapel"><option value="LEITOR">Leitor</option><option value="ADMIN">Administrador</option></select></label>'
+    + '<label>Senha<span class="acs-senha"><input id="aSenha" value="' + gerarSenha() + '"><button class="btn ghost" type="button" id="aGerar">Gerar</button></span></label>'
+    + '<button class="btn primary" type="button" id="aCriar">Liberar acesso</button></div>'
+    + (ultimoCadastro ? '<div class="acs-ok" id="aOk">' + ultimoCadastro + '<br><button class="btn ghost" type="button" id="aCopiar" style="margin-top:8px">Copiar dados de acesso</button></div>' : '')
+    + '</div><div class="card"><h2>Quem tem acesso</h2><div id="aLista"><p class="hint">Carregando…</p></div></div>';
+  $("#aGerar").onclick = () => { $("#aSenha").value = gerarSenha(); };
+  if ($("#aCopiar")) $("#aCopiar").onclick = () => { navigator.clipboard.writeText(ultimoCadastro.replace(/<[^>]+>/g, "")).then(() => toast("Dados copiados.", "ok")); };
+  $("#aCriar").onclick = async () => {
+    const email = $("#aEmail").value.trim(), senha = $("#aSenha").value.trim(), nome = $("#aNome").value.trim(), papel = $("#aPapel").value;
+    const b = $("#aCriar"); b.disabled = true; toast("Liberando acesso…");
+    try {
+      await chamarAcessos({ acao:"criar", email, senha, nome, papel });
+      ultimoCadastro = "Acesso liberado para <b>" + esc(nome || email) + "</b>.\nLink: " + esc(location.origin + location.pathname)
+        + "\nE-mail: " + esc(email) + "\nSenha: " + esc(senha);
+      toast("Acesso liberado.", "ok"); renderAcessos();
+    } catch(e){ toast(e.message, "err"); b.disabled = false; }
+  };
+  try {
+    const { lista, eu } = await chamarAcessos({ acao:"listar" });
+    lista.sort((a,b) => (a.papel === b.papel ? 0 : a.papel === "ADMIN" ? -1 : 1) || String(a.nome || a.email).localeCompare(String(b.nome || b.email), "pt-BR"));
+    $("#aLista").innerHTML = '<div class="tscroll"><table class="acs-tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th>Liberado em</th><th></th></tr></thead><tbody>'
+      + lista.map(x => '<tr><td>' + esc(x.nome || "–") + '</td><td>' + esc(x.email) + '</td>'
+        + '<td><span class="pill' + (x.papel === "ADMIN" ? " adm" : "") + '">' + (x.papel === "ADMIN" ? "Administrador" : "Leitor") + '</span></td>'
+        + '<td>' + (!x.tem_login ? '<span class="pill">Sem login criado</span>' : x.ultimo_acesso ? '<span class="pill ok">Ativo</span>' : '<span class="pill">Nunca entrou</span>') + '</td>'
+        + '<td>' + fData(x.ultimo_acesso) + '</td><td>' + fData(x.liberado_em) + '</td>'
+        + '<td><div class="acts">' + (x.tem_login ? '<button data-a="senha" data-e="' + esc(x.email) + '">Nova senha</button>' : '')
+        + (String(x.email).toLowerCase() === eu ? '' : '<button class="del" data-a="remover" data-e="' + esc(x.email) + '">Remover acesso</button>') + '</div></td></tr>').join("")
+      + '</tbody></table></div><p class="hint" style="margin-top:8px">' + lista.length + ' pessoa(s) com acesso. Remover acesso bloqueia o painel na hora; o login da pessoa no Supabase não é apagado.</p>';
+    $("#aLista").onclick = async e => {
+      const bt = e.target.closest("button[data-a]"); if (!bt) return;
+      const email = bt.dataset.e, a = bt.dataset.a;
+      if (a === "remover"){
+        if (!confirm("Remover o acesso de " + email + " ao painel?")) return;
+        try { await chamarAcessos({ acao:"remover", email }); toast("Acesso removido.", "ok"); renderAcessos(); } catch(err){ toast(err.message, "err"); }
+      } else {
+        const senha = prompt("Nova senha para " + email + " (mínimo 8 caracteres):", gerarSenha()); if (!senha) return;
+        try { await chamarAcessos({ acao:"senha", email, senha });
+          ultimoCadastro = "Senha redefinida para <b>" + esc(email) + "</b>.\nLink: " + esc(location.origin + location.pathname) + "\nE-mail: " + esc(email) + "\nSenha: " + esc(senha);
+          toast("Senha alterada.", "ok"); renderAcessos(); } catch(err){ toast(err.message, "err"); }
+      }
+    };
+  } catch(e){ $("#aLista").innerHTML = '<p class="hint" style="color:var(--red)">' + esc(e.message) + '</p>'; }
+}
+
+function paintAuth(){
+  $("#btnLogin").classList.toggle("hidden", logged); $("#btnLogout").classList.toggle("hidden", !logged);
+  $("#btnUp").classList.toggle("hidden", !(logged && isAdmin));
+  $("#tabAcessos").classList.toggle("hidden", !(logged && isAdmin));
+  if (!logged) showEmpty("Acesso restrito", '<p style="color:var(--muted)">Clique em <b>Entrar</b> e use o e-mail e a senha que você recebeu.</p>');
+}
+async function aoLogar(session){
+  logged = !!session;
+  if (!logged){ isAdmin = false; S.rows = null; S.loadedAsset = null; S.meta = null; paintAuth(); renderMeta(); return; }
+  const [ra, rv] = await Promise.all([sb.rpc("painel_sou_admin"), sb.rpc("painel_posso_ver")]);
+  isAdmin = !ra.error && ra.data === true; paintAuth();
+  if (!isAdmin && !(rv && !rv.error && rv.data === true)){ showEmpty("Usuário sem acesso a este painel", '<p style="color:var(--muted)">Seu login funcionou, mas seu e-mail ainda não foi liberado. Fale com o responsável.</p>'); return; }
+  await syncBase(false);
+}
+async function syncBase(silent){
+  const { data, error } = await sb.from("painel_base_meta").select("*").eq("painel", PAINEL).maybeSingle();
+  if (error || !data){ if (!S.rows) showEmpty(isAdmin ? "Carregue a primeira base" : "Nenhuma base publicada ainda", isAdmin ? '<p style="color:var(--muted)">Use <b>Atualizar base</b> e escolha o arquivo diário <b>VCLI_ACTIONLINE</b> enviado pelo C6 (.xlsx).</p>' : ""); return; }
+  const m = toMeta(data); if (m.path === S.loadedAsset){ S.meta = m; renderMeta(); return; }
+  try { const dl = await sb.storage.from(BUCKET).download(m.path); if (dl.error) throw dl.error;
+    S.loadedAsset = m.path; load(JSON.parse(await dl.data.text()), m); if (silent) toast("Base atualizada.", "ok"); }
+  catch(_){ if (!S.rows) showEmpty("Não foi possível baixar a base", ""); }
+}
+$("#btnLogin").onclick = () => { $("#lErr").textContent = ""; $("#dlgLogin").showModal(); $("#lEmail").focus(); };
+$("#lCancel").onclick = () => $("#dlgLogin").close();
+$("#fLogin").onsubmit = async e => { e.preventDefault(); const b = $("#lGo"); b.disabled = true; $("#lErr").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email:$("#lEmail").value.trim(), password:$("#lPass").value });
+  b.disabled = false; if (error){ $("#lErr").textContent = "E-mail ou senha incorretos."; return; } $("#lPass").value = ""; $("#dlgLogin").close(); };
+$("#btnLogout").onclick = () => sb.auth.signOut();
+(async function init(){
+  if (!sb){ $("#btnLogin").classList.add("hidden"); $("#btnLocal").classList.remove("hidden");
+    showEmpty("Abra a base", '<p style="color:var(--muted)">Sem conexão com o Supabase: use <b>Abrir arquivo</b> para ver a base só nesta tela.</p>'); return; }
+  sb.auth.onAuthStateChange((ev, session) => { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(() => aoLogar(session), 0); });
+  const { data } = await sb.auth.getSession(); await aoLogar(data && data.session);
+  setInterval(() => { if (logged && document.visibilityState === "visible") syncBase(true); }, 2 * 60 * 1000);
+})();
+})();
+</script>
+</body>
+</html>
