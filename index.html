@@ -308,6 +308,7 @@ table.x th.sort:hover{color:var(--teal)}
       <label>Safra (mês de abertura)<select id="selSafra"></select></label>
       <label>Origem da base<select id="selOrig"></select></label>
       <label>Mês de apuração<select id="selApur"></select></label>
+      <label>Foto do mês anterior<span style="display:flex;gap:6px;align-items:center"><button class="btn ghost" id="btnPrev" type="button">Abrir arquivo</button><span class="hint" id="prevInfo" style="margin:0">não carregada</span></span><input type="file" id="filePrev" accept=".xlsx,.xls,.csv,.txt" hidden></label>
       <label>Regra do acelerador<select id="selRegra"><option value="tabela">Somente tabela da faixa</option><option value="dupla">Tabela da faixa + acelerador</option></select></label>
       <button class="btn ghost" id="btnXlsx">Baixar Excel</button>
     </div>
@@ -378,7 +379,7 @@ const fSafra = m => fMes(String(m).replace("-", ""));
 const COLS_TXT = ["DATA_BASE","CD_CPF_CNPJ","NOME_CLIENTE","NOME_DO_MASTER","TELEFONE","TELEFONE_APP","BASE_ORIGEM","STATUS_ABERTURA_CC","STATUS_CONTA","STATUS_LEAD","DT_CONTA_CRIADA","DT_DISPONIBILIZACAO_BASE","DT_CADASTRO_CHAVEPIX","TIPO_CHAVEPIX"];
 const COLS_NUM = ["FL_PRIMEIRO_ACESSO","FL_ATIVA","CADASTRO_CHAVEPIXFORTE","FL_CASH_IN_MAIOR_0","FL_CASH_IN_MAIOR_1000","VL_CASH_IN","FL_EMISSAO_BOLETO_MAIOR_0","FL_EMISSAO_BOLETO_MAIOR_1000","VL_EMISSAO_BOLETO","ELEGIBILIDADE_C6PAY","FL_SOLICITACAO_C6PAY","FL_ENTREGA_C6PAY","TPV_C6PAY_M0","TPV_C6PAY_M1","CARTAO_ATIVO","SPENDING_CREDITO_M0","SPENDING_CREDITO_M1","FL_CARTAO_MAIOR_1000"];
 const DATE_COLS = new Set(["DATA_BASE","DT_CONTA_CRIADA","DT_DISPONIBILIZACAO_BASE","DT_CADASTRO_CHAVEPIX"]);
-const S = { rows:null, meta:null, loadedAsset:null, safras:[], safra:"", orig:"", tab:"geral", regra:"tabela", apur:"", oport:"ativ", busca:"", sortK:"valor", sortD:-1, dataBase:"" };
+const S = { rows:null, meta:null, loadedAsset:null, safras:[], safra:"", orig:"", tab:"geral", regra:"tabela", apur:"", prev:null, prevBase:"", oport:"ativ", busca:"", sortK:"valor", sortD:-1, dataBase:"" };
 
 /* ================= LEITURA ================= */
 const normKey = k => String(k).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u00a0/g, " ").trim().toUpperCase().replace(/\s+/g, "_");
@@ -466,16 +467,64 @@ $("#selSafra").onchange = e => { S.safra = e.target.value; refresh(); };
 $("#selOrig").onchange = e => { S.orig = e.target.value; refresh(); };
 $("#selRegra").onchange = e => { S.regra = e.target.value; refresh(); };
 $("#selApur").onchange = e => { S.apur = e.target.value; refresh(); };
+$("#btnPrev").onclick = () => $("#filePrev").click();
+$("#filePrev").onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  try { toast("Lendo a foto anterior…");
+    const enc = encode(await readFile(f)), T = enc.txt, N = enc.num, m = new Map(); let base = "";
+    enc.data.forEach(a => { const o = {}; T.forEach((c, i) => o[c] = a[i]); N.forEach((c, i) => o[c] = a[T.length + i]); prep(o);
+      if (o.DATA_BASE > base) base = o.DATA_BASE; const x = m.get(o.CD_CPF_CNPJ) || {};
+      if (o.g.pix) x.pix = true; if (o.g.bol) x.bol = true;
+      x.carM1 = (x.carM1 || 0) + (o.SPENDING_CREDITO_M1 || 0); x.tpvM1 = (x.tpvM1 || 0) + (o.TPV_C6PAY_M1 || 0); m.set(o.CD_CPF_CNPJ, x); });
+    S.prev = m; S.prevBase = base; $("#prevInfo").textContent = "foto de " + fD(base);
+    toast("Foto anterior carregada (" + fD(base) + ").", "ok"); refresh();
+  } catch (x){ toast((x && x.message) || "Não foi possível ler a foto anterior.", "err"); }
+  finally { e.target.value = ""; } };
 $("#tabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.tab = b.dataset.t; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b)); refresh(); };
 
 /* ================= CALCULO POR SAFRA ================= */
 function fimJanela(safra){ const y = +safra.slice(0, 4), m = +safra.slice(5, 7); return new Date(y, m + 1, 0); }     /* ultimo dia do mes seguinte */
 const isoD = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 function dia20(safra, mais){ const y = +safra.slice(0, 4), m = +safra.slice(5, 7); return isoD(new Date(y, m - 1 + mais, 20)); }
+/* ===== cartilha Bases Internas PJ (nov/26) =====
+   - balde de cada SAFRA (mes de abertura): contas aprovadas e liberadas abertas naquele mes;
+     % ativacao (FL_ATIVA, na foto) define a faixa da Tabela 1 para TODAS as comissoes daquela safra
+   - janela dos gatilhos: mes da abertura + mes seguinte (calendario)
+   - cada gatilho e pago uma unica vez, no 1o mes em que for atingido
+   - apuracao do mes M = aberturas concluidas em M + gatilhos atingidos pela 1a vez em M */
+const proxMes = m => { const y = +m.slice(0, 4), mm = +m.slice(5, 7); return mm === 12 ? (y + 1) + "-01" : y + "-" + String(mm + 1).padStart(2, "0"); };
+const antMes  = m => { const y = +m.slice(0, 4), mm = +m.slice(5, 7); return mm === 1 ? (y - 1) + "-12" : y + "-" + String(mm - 1).padStart(2, "0"); };
+/* M0 e M1 do arquivo sao relativos a FOTO: M0 = mes da foto, M1 = mes anterior a foto.
+   valor do mes de apuracao e do mes anterior a ele, para cartao (spending credito) e TPV */
+function valMes(r, k){
+  const m0 = k === "car" ? (r.SPENDING_CREDITO_M0 || 0) : (r.TPV_C6PAY_M0 || 0);
+  const m1 = k === "car" ? (r.SPENDING_CREDITO_M1 || 0) : (r.TPV_C6PAY_M1 || 0);
+  const fm = S.dataBase.slice(0, 7);
+  if (fm === S.apur) return { apur:m0, ant:m1 };                       /* foto dentro do mes apurado */
+  if (fm === proxMes(S.apur)){                                          /* foto no mes seguinte (fechamento) */
+    const p = S.prev && S.prev.get(r.CD_CPF_CNPJ), pm = S.prevBase.slice(0, 7);
+    return { apur:m1, ant:p && pm === S.apur ? (k === "car" ? p.carM1 : p.tpvM1) : (S.prev && pm === S.apur ? 0 : undefined) };
+  }
+  return { apur:undefined, ant:undefined };                            /* foto fora do periodo */
+}
+/* mes em que o gatilho foi atingido pela 1a vez ("" = nao atingido no periodo; "ANTES" = ja atingido antes do mes apurado) */
+function mesGat(r, k){
+  if (!r.elig || !r.safra) return "";
+  if (k === "ab") return r.safra;
+  if (k === "car" || k === "tpv"){
+    const v = valMes(r, k);
+    if (v.apur === undefined) return "";
+    if (r.safra === S.apur) return v.apur >= 1000 ? S.apur : "";
+    if (v.ant === undefined){ r.semPrevCT = true; return v.apur >= 1000 ? S.apur : ""; }   /* sem o mes anterior: so o mes apurado */
+    return v.ant >= 1000 ? "ANTES" : v.ant + v.apur >= 1000 ? S.apur : "";
+  }
+  if (!r.g[k]) return "";
+  if (r.safra === S.apur) return S.apur;
+  if (S.prev){ const p = S.prev.get(r.CD_CPF_CNPJ); return p && p[k] ? "ANTES" : S.apur; }
+  return S.apur;    /* sem foto anterior: assume atingido no mes de apuracao */
+}
 function safraInfo(sf){
-  /* balde = contas APROVADAS com STATUS_CONTA LIBERADA (todas as safras e origens);
-     % ativacao = contas ativas (FL_ATIVA) / balde -> define o acelerador de todas as safras */
-  const balde = S.rows.filter(naApur), ativas = balde.filter(r => r.FL_ATIVA === 1).length;
+  /* balde da safra: contas aprovadas e liberadas abertas no mes da safra */
+  const balde = S.rows.filter(r => r.balde && r.safra === sf), ativas = balde.filter(r => r.FL_ATIVA === 1).length;
   const pct = div(ativas, balde.length), acel = acelDe(pct || 0);
   const prox = FAIXAS.slice().reverse().find(f => (pct || 0) < f.p);
   const falta = prox ? Math.max(0, Math.ceil(prox.p * balde.length - 1e-9) - ativas) : 0;
@@ -485,13 +534,20 @@ function safraInfo(sf){
 }
 /* conta entra na apuracao se esta no balde e foi criada ate o mes de apuracao (contas de meses seguintes ficam fora) */
 const naApur = r => r.balde && (!r.safra || !S.apur || r.safra <= S.apur);
-function filtrados(){ return S.rows.filter(r => r.aberta && naApur(r) && (!S.safra || r.safra === S.safra) && (!S.orig || r.BASE_ORIGEM === S.orig)); }
+/* balde = so as contas aprovadas e liberadas CRIADAS NO MES DE APURACAO (nao acumula meses anteriores) */
+const noBalde = r => r.balde && !!r.safra && r.safra === S.apur;
+/* contas que podem gerar evento no mes de apuracao: safra do mes e safra anterior (janela aberta em M) */
+function filtrados(){ return S.rows.filter(r => r.aberta && (r.safra === S.apur || r.safra === antMes(S.apur)) && (!S.safra || r.safra === S.safra) && (!S.orig || r.BASE_ORIGEM === S.orig)); }
 function calc(){
   const info = {}; S.safras.forEach(sf => info[sf] = safraInfo(sf));
   const rows = filtrados();
   /* faturamento do mes de apuracao: abertura so das contas criadas no mes; Cash In, boleto,
      cartao e TPV de todas as contas do balde que atingiram o gatilho */
-  rows.forEach(r => { r.gf = {}; GAT.forEach(g => r.gf[g.k] = !!r.g[g.k] && (g.k !== "ab" || r.safra === S.apur));
+  S.semPrev = 0;
+  rows.forEach(r => { r.gf = {}; r.mg = {};
+    GAT.forEach(g => { const m = mesGat(r, g.k); r.mg[g.k] = m;
+      r.gf[g.k] = m === S.apur && m <= proxMes(r.safra);      /* atingido em M e dentro da janela */
+      if (r.gf[g.k] && !S.prev && g.k !== "ab" && r.safra !== S.apur) S.semPrev++; });
     r.baseVal = GAT.reduce((s, g) => s + (r.gf[g.k] ? g.base : 0), 0);
     const a = info[r.safra].acel; r.acel = a; r.valor = r.baseVal * mult(a); });
   const porSafra = {};
@@ -507,11 +563,12 @@ function refresh(){
   if (!S.rows) return;
   const C = calc(), safras = Object.keys(C.porSafra).sort();
   const tot = safras.reduce((t, sf) => { const p = C.porSafra[sf]; t.valor += p.valor; t.contas += p.contas; t.elig += p.elig; GAT.forEach(g => t.q[g.k] = (t.q[g.k] || 0) + (p.q[g.k] || 0)); return t; }, { valor:0, contas:0, elig:0, q:{} });
-  const bal = S.rows.filter(naApur), ativas = bal.filter(r => r.FL_ATIVA === 1).length;
+  const bal = S.rows.filter(r => r.balde && r.safra === S.apur), ativas = bal.filter(r => r.FL_ATIVA === 1).length;
   const k = (n, v, s) => '<div class="kpi"><div class="n">' + n + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
   const ganho = safras.reduce((s, sf) => { const i = C.info[sf]; return s + (i.aberta && i.prox ? C.porSafra[sf].base * (mult(i.prox.a) - mult(i.acel)) : 0); }, 0);
-  $("#kpis").innerHTML = k("Faturamento estimado", fR(tot.valor), "Apuração " + fSafra(S.apur) + ": " + fInt(tot.q.ab || 0) + " aberturas + gatilhos do balde")
-    + k("Contas no balde", fInt(bal.length), "aprovadas e com a conta liberada" + (bal.length > tot.contas && !S.safra && !S.orig ? " · " + fInt(bal.length - tot.contas) + " sem data de criação (fora das safras)" : ""))
+  $("#kpis").innerHTML = k("Faturamento da apuração", fR(tot.valor), "Eventos de " + fSafra(S.apur) + (tot.valor < 3000 ? " · abaixo do mínimo de R$ 3.000 (acumula)" : "")
+      + (S.semPrev ? ' · <b style="color:var(--amber, #B7791F)">' + fInt(S.semPrev) + ' gatilhos da safra ' + fSafra(antMes(S.apur)) + ' sem foto anterior (podem já ter sido pagos)</b>' : ""))
+    + k("Contas no balde", fInt(bal.length), "aprovadas, liberadas e criadas em " + fSafra(S.apur))
     + k("% ativação do balde", fPct(div(ativas, bal.length)), fInt(ativas) + " ativas de " + fInt(bal.length) + " contas do balde")
     + k("Cash In + PIX forte", fInt(tot.q.pix || 0), "gatilho de R$ 300 (base)")
     + k("Boleto · Cartão · TPV", fInt(tot.q.bol || 0) + " · " + fInt(tot.q.car || 0) + " · " + fInt(tot.q.tpv || 0), "gatilhos de R$ 400 · 500 · 700")
@@ -545,12 +602,12 @@ function viewGeral(C, safras){
   const comp = '<div class="card"><h2>Composição do faturamento</h2><div class="tscroll"><table class="x"><thead><tr><th>Safra</th>' + GAT.map(g => '<th class="num">' + g.nome + '</th>').join("") + '<th class="num">Total</th></tr></thead><tbody>' + linhas
     + '<tr class="tot"><td class="name"><b>Total</b></td>' + T.map(v => '<td class="num"><b>' + fR(v) + '</b></td>').join("") + '<td class="num"><b>' + fR(TT) + '</b></td></tr>'
     + '<tr><td class="name">% do total</td>' + T.map(v => '<td class="num">' + fPct(div(v, TT)) + '</td>').join("") + '<td class="num">100%</td></tr></tbody></table></div>'
-    + '<p class="legend2" style="margin:8px 0 0">Valores finais pela regra selecionada (' + (S.regra === "dupla" ? 'tabela da faixa + acelerador' : 'somente tabela da faixa') + '). Só contas liberadas comissionam; o balde são as contas aprovadas com STATUS_CONTA liberada, criadas até o mês de apuração (todas as origens); o % de ativação é calculado sobre ele.</p></div>';
+    + '<p class="legend2" style="margin:8px 0 0">Valores finais pela regra selecionada (' + (S.regra === "dupla" ? 'tabela da faixa + acelerador' : 'somente tabela da faixa') + '). Só contas liberadas comissionam; o balde são as contas aprovadas com STATUS_CONTA liberada, criadas no mês de apuração (todas as origens); o % de ativação é calculado sobre ele.</p></div>';
   return compBalde() + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-bottom:16px">' + cards + '</div>' + comp;
 }
 /* composicao do balde: de onde vem o % de ativacao (todas as safras e origens) */
 function compBalde(){
-  const bal = S.rows.filter(naApur), N = bal.length, A = bal.filter(r => r.FL_ATIVA === 1).length;
+  const bal = S.rows.filter(r => r.balde && (r.safra === S.apur || r.safra === antMes(S.apur))), N = bal.length, A = bal.filter(r => r.FL_ATIVA === 1).length;
   const grupo = (chave, ordem) => { const m = new Map();
     bal.forEach(r => { const k = chave(r); const x = m.get(k) || { n:0, a:0 }; x.n++; if (r.FL_ATIVA === 1) x.a++; m.set(k, x); });
     return Array.from(m.entries()).sort(ordem); };
@@ -565,7 +622,7 @@ function compBalde(){
     .forEach(r => { const k = String(r.STATUS_CONTA || "SEM STATUS").toUpperCase(); fora.set(k, (fora.get(k) || 0) + 1); });
   const foraTxt = fora.size ? Array.from(fora.entries()).map(([k, n]) => fInt(n) + " " + k.toLowerCase()).join(", ") : "nenhuma";
   return '<div class="card"><h2>Composição do balde</h2>'
-    + '<p class="hint" style="margin:0 0 12px">Balde = contas aprovadas com STATUS_CONTA liberada, criadas até o mês de apuração (' + esc(fSafra(S.apur)) + '), de todas as origens. O % de ativação do balde define o acelerador de todas as safras.</p>'
+    + '<p class="hint" style="margin:0 0 12px">Cada safra (mês de abertura) tem o seu balde: contas aprovadas com STATUS_CONTA liberada abertas naquele mês. O % de ativação de cada safra, na foto, define a faixa da Tabela 1 de todas as comissões dela. Aqui aparecem as duas safras com janela aberta em ' + esc(fSafra(S.apur)) + '.</p>'
     + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:16px">'
     + '<div class="tscroll">' + head("Mês de abertura") + porSafra + tot + '</tbody></table></div>'
     + '<div class="tscroll">' + head("Origem da base") + porOrig + tot + '</tbody></table></div></div>'
@@ -578,7 +635,7 @@ function viewGatilhos(C, safras){
       + GAT.map(g => '<tr><td class="name">' + g.nome + '</td><td class="num">' + fR(g.base) + '</td><td class="num">' + fR(g.base * i.acel) + '</td><td class="num"><b>' + fR(g.base * mult(i.acel)) + '</b></td><td class="num"><b>' + fInt(p.q[g.k] || 0) + '</b></td><td class="num">' + fPct(div(p.q[g.k] || 0, p.elig)) + '</td><td class="num"><b>' + fR(p.v[g.k] || 0) + '</b></td></tr>').join("")
       + '<tr class="tot"><td class="name"><b>Total</b></td><td></td><td></td><td></td><td></td><td></td><td class="num"><b>' + fR(p.valor) + '</b></td></tr></tbody></table></div></div>'; }).join("");
   return (t || '<div class="card"><h2>Sem contas no filtro</h2></div>')
-    + '<div class="card"><h2>Regras dos gatilhos</h2><p class="hint" style="margin:0">Abertura: conta liberada. Cash In + PIX forte: chave PIX forte cadastrada e cash in ≥ R$ 1.000. Boleto: emissão ≥ R$ 1.000 (FL_EMISSAO_BOLETO_MAIOR_1000). Cartão: soma do spending de crédito M0 + M1 ≥ R$ 1.000. TPV C6 Pay: TPV M0 + M1 ≥ R$ 1.000. Cada gatilho conta uma vez por conta, dentro da janela (mês de abertura + mês seguinte). Valor final: ' + (S.regra === "dupla" ? 'valor da tabela da faixa (Tabela 1) multiplicado pelo acelerador da Tabela 2 (ex.: faixa ≥ 25%: R$ 150 × 1,25 = R$ 187,50 na abertura).' : 'somente o valor da tabela da faixa (Tabela 1).') + '</p></div>';
+    + '<div class="card"><h2>Regras dos gatilhos</h2><p class="hint" style="margin:0">Regras da cartilha Bases Internas PJ. <b>Conta elegível:</b> aprovada e com STATUS_CONTA liberada; encerradas e bloqueadas ficam de fora. <b>Safra:</b> mês de criação da conta. <b>Balde e faixa:</b> cada safra tem o seu balde (contas abertas no mês) e o % de ativação (FL_ATIVA, na foto) define a faixa da Tabela 1 de todas as comissões da safra. <b>Janela:</b> mês da abertura + mês seguinte. <b>Apuração do mês:</b> aberturas concluídas no mês + gatilhos atingidos pela primeira vez no mês (cada gatilho é pago uma única vez por conta). <b>Gatilhos (≥ R$ 1.000):</b> Cash In + chave PIX forte; emissão de boleto; spending de crédito; TPV C6 Pay. No arquivo, M0 é o mês da foto e M1 o mês anterior. Para a safra anterior, a foto do mês anterior separa o que já foi pago. Pagamento mínimo de R$ 3.000 (abaixo disso, acumula).</p></div>';
 }
 /* ---------- oportunidades: contas em janela aberta perto de um gatilho ---------- */
 const OP = [
